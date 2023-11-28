@@ -6,10 +6,12 @@ const semverValid = require('semver/functions/valid');
 
 export const STATUS = {
   ADDED: 'ADDED',
+  UPDATED: 'UPDATED',
   DOWNGRADED: 'DOWNGRADED',
-  REMOVED: 'REMOVED',
-  UPDATED: 'UPDATED'
+  REMOVED: 'REMOVED'
 };
+
+export const STATUS_ORDER = [STATUS.ADDED, STATUS.UPDATED, STATUS.DOWNGRADED, STATUS.REMOVED];
 
 export const countStatuses = (lockChanges, statusToCount) =>
   Object.values(lockChanges).filter(({ status }) => status === statusToCount).length;
@@ -77,13 +79,18 @@ const constructClassicEntry = entryLines => {
     : undefined;
 
   const entryObject = {
-    version: entryLines[1].split('version ')[1],
-    resolved: entryLines[2].split('resolved ')[1],
-    integrity: entryLines[3].split('integrity ')[1],
+    version: findLockLineValue(entryLines, 'version'),
+    resolved: findLockLineValue(entryLines, 'resolved'),
+    integrity: findLockLineValue(entryLines, 'integrity'),
     dependencies
   };
 
   return Object.assign({}, ...keys.map(key => ({ [key.trim()]: entryObject })));
+};
+
+const findLockLineValue = (lines, keyString) => {
+  const foundLine = lines.find(line => line.includes(`${keyString} `));
+  return foundLine ? foundLine.split(`${keyString} `)[1] : undefined;
 };
 
 const constructBerryEntry = entryLines => {
@@ -94,7 +101,7 @@ const constructBerryEntry = entryLines => {
     .replaceAll(':', '')
     .split(',');
 
-  const version = entryLines[1].split('version: ')[1];
+  const version = findLockLineValue(entryLines, 'version:');
   const isLocal = version.includes('use.local');
 
   const endFields = entryLines.splice(isLocal ? -3 : -4);
@@ -102,9 +109,11 @@ const constructBerryEntry = entryLines => {
   const peerFields =
     peerBlockStart !== -1 ? entryLines.splice(-(entryLines.length - peerBlockStart)) : undefined;
 
-  const dependencies = entryLines[3]?.includes('dependencies:')
-    ? Object.assign({}, ...entryLines.splice(4).map(parseDependencyLine))
-    : undefined;
+  const dependenciesBlockStart = entryLines.findIndex(entry => entry.includes('dependencies:'));
+  const dependencies =
+    dependenciesBlockStart !== -1
+      ? Object.assign({}, ...entryLines.splice(4).map(parseDependencyLine))
+      : undefined;
 
   const peerBlockEnd =
     peerFields && peerFields.findIndex(entry => entry.includes('peerDependenciesMeta:'));
@@ -117,7 +126,7 @@ const constructBerryEntry = entryLines => {
       : undefined;
 
   const integrity = !isLocal && endFields[0].split('checksum: ')[1];
-  const resolution = entryLines[2].split('resolution: ')[1];
+  const resolution = findLockLineValue(entryLines, 'resolution:');
 
   const entryObject = {
     version,
